@@ -79,3 +79,9 @@ def data_preprocessing(eng_str="en", fr_str="fr", data_pd=None):
 en_lang, fr_lang, data_pairs = data_preprocessing(eng_str="en", fr_str="fr", data_pd=whole_data)
 
 
+with open('en_lang.pickle', 'wb') as handle:
+    pickle.dump(en_lang, handle, protocol=pickle.HIGHEST_PROTOCOL)
+with open('fr_lang.pickle', 'wb') as handle:
+    pickle.dump(fr_lang, handle, protocol=pickle.HIGHEST_PROTOCOL)
+with open('data_pairs.pickle', 'wb') as handle:
+    pickle.dump(data_pairs, handle, protocol=pickle.HIGHEST_PROTOCOL)
