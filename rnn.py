@@ -170,7 +170,7 @@ def showPlot(points):
     ax.yaxis.set_major_locator(loc)
     plt.plot(points)
 
-#data_loader.pickle_data()
+#data_loader.pickle_data(nrows=10000)
 
 print(bleu_score([["1", "2"]],[["1", "3"]]))
 

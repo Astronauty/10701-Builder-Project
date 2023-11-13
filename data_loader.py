@@ -91,7 +91,7 @@ def data_preprocessing(en_tokenizer, fr_tokenizer, eng_str="en", fr_str="fr", da
     return en_lang, fr_lang, data_pairs
 
 
-def pickle_data(nrows=10000):
+def pickle_data(nrows=None):
     # tokenizers
     en_tokenizer = get_tokenizer(tokenizer='spacy',language='en_core_web_sm')
     fr_tokenizer = get_tokenizer(tokenizer='spacy',language='fr_core_news_sm')
