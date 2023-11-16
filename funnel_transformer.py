@@ -19,7 +19,7 @@ class MultiHeadAttention(nn.Module):
         
         self.W_q = nn.Linear(d_model, d_model)
         self.W_k = nn.Linear(d_model, d_model)
-        self.W_b = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
         self.W_o = nn.Linear(d_model, d_model)
         
     def scaled_dot_product_attention(self, Q, K, V, mask=None): 

@@ -168,7 +168,7 @@ class EnFrDataset(Dataset):
 
         
     def __getitem__(self, idx):
-        return torch.Tensor([self.data_pairs[idx][0], self.data_pairs[idx][1]])
+        return torch.Tensor([self.data_pairs[idx][0], self.data_pairs[idx][1]]).int()
     
     def __len__(self):
         return len(self.data_pairs)
