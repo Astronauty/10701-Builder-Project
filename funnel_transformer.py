@@ -5,6 +5,7 @@ import torch.optim as optim
 import torch.utils.data as data
 import math
 import copy
+from enum import Enum
 
 
 class MultiHeadAttention(nn.Module):

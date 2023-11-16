@@ -6,9 +6,10 @@ import pickle
 from tqdm import tqdm
 import string
 from pathlib import Path
+from enum import Enum
 
 class EnFrDataset(Dataset):
-    def __init__(self, used_abridged_data:bool):
+    def __init__(self, max_seq_length, used_abridged_data:bool):
         """_summary_
 
         Args:
@@ -20,6 +21,7 @@ class EnFrDataset(Dataset):
         self.use_abridged_data = used_abridged_data
         self.full_dataset_path = Path("data/en-fr.csv")
         self.abridged_dataset_path = Path("data/en-fr-abridged.csv")
+        self.max_seq_length = max_seq_length
         
         self.en_tokenizer = get_tokenizer(tokenizer='spacy',language='en_core_web_sm')
         self.fr_tokenizer = get_tokenizer(tokenizer='spacy',language='fr_core_news_sm')
@@ -33,9 +35,11 @@ class EnFrDataset(Dataset):
         # abridged_dataset_path = 'data/en-fr-abridged.csv'
         self.full_dataset_path.parent.mkdir(parents=True, exist_ok=True) # make datafolder if it doesn't exist
         
+        # Check if the full dataset exists
         if not self.full_dataset_path.exists():
             raise FileNotFoundError("The full dataset does not exist. Please download it from https://www.kaggle.com/datasets/dhruvildave/en-fr-translation-dataset/data and place in the /data folder.")
         
+        # Create the abridged dataset if it does not exist
         if  self.use_abridged_data and not self.abridged_dataset_path.exists():      
             print("Creating abridged dataset...")
             full_dataset = pd.read_csv(self.full_dataset_path)
@@ -44,7 +48,7 @@ class EnFrDataset(Dataset):
         
         self.ds = pd.read_csv(self.abridged_dataset_path, encoding="utf-8", keep_default_na=False) if self.use_abridged_data else pd.read_csv(self.full_dataset_path, encoding="utf-8", keep_default_na=False)
         
-        self._data_preprocessing()
+        self._data_preprocessing() # create data_pairs of lists of tokens
         pass
 
     def _data_preprocessing(self, eng_str="en", fr_str="fr"):
@@ -63,22 +67,23 @@ class EnFrDataset(Dataset):
         """
         # initialize the language classes and get the data pairs (English, France)
         self.en_lang, self.fr_lang, self.data_pairs = self._read_lang(eng_str=eng_str, fr_str=fr_str, data_pd=self.ds) # Initialize language objects
-        for i in tqdm(range(len(self.data_pairs)), desc="Adding sentences to Langs amd geting data pairs..."): # create language dictionaries
+        print("Adding sentences to Langs amd geting data pairs...")
+        for i in tqdm(range(len(self.data_pairs))): # create language dictionaries
             self.en_lang.addSentence(self.data_pairs[i][0].lower(), self.en_tokenizer, self.fr_tokenizer)
             self.fr_lang.addSentence(self.data_pairs[i][1].lower(), self.en_tokenizer, self.fr_tokenizer)
 
-        self.data_pairs = self._string_data_to_tokens(self.data_pairs, self.en_lang, self.fr_lang, self.en_tokenizer, self.fr_tokenizer) # converts sequence to tokens
+        self.data_pairs = self._string_data_to_tokens(self.data_pairs) # converts sequence to tokens
         #  return en_lang, fr_lang, data_pairs
         pass
             
     def _read_lang(self, eng_str="en", fr_str="fr", data_pd=None):
         # return if the dataformat is wrong
         if type(self.ds) != pd.core.frame.DataFrame:
-            raise TypeError("Wrong dataframe format!!")
-            return
-        # get the pairs
-        pairs = [(self.ds[eng_str][i], self.ds[fr_str][i]) for i in tqdm(range(len(data_pd)))]
+            raise TypeError("Wrong dataframe format!")
             
+        print("Reading the dataframe and storing untokenized pairs...")
+        pairs = [(self.ds[eng_str][i], self.ds[fr_str][i]) for i in tqdm(range(len(data_pd)))]
+      
         # create the class objects of Langs for English and French to count the 
         eng_lang = Langs("en")
         fr_lang = Langs("fr")
@@ -109,12 +114,29 @@ class EnFrDataset(Dataset):
         for token in list_of_tokens:
          list_of_words.append(lang.index2word[token])
         return list_of_words
-
-    def _string_to_token_list(self, string, lang):
-        """Tokenize a single string in the given english/french language and return the list of tokens.
+ 
+    def _string_data_to_tokens(self, data):
+        """Create tokenized pairs of english and french sentences
 
         Args:
-            string (_type_): _description_
+            data (_type_): Dictionary of english and french sentences
+
+        Returns:
+            _type_: _description_
+        """
+        tokenized_data = []
+        print("Creating tokenized pairs of english and french sentences...")
+        for i in tqdm(range(len(data))):
+            tokenized_pair = (self._string_to_token_list(data[i][0], self.en_lang), self._string_to_token_list(data[i][1], self.fr_lang))
+            tokenized_data.append(tokenized_pair)
+        return tokenized_data
+
+    
+    def _string_to_token_list(self, sequence, lang):
+        """Tokenize a sequence string in the given english/french language and return the list of tokens.
+
+        Args:
+            sequence (string): _description_
             lang (_type_): _description_
             en_tokenizer (_type_): _description_
             fr_tokenizer (_type_): _description_
@@ -122,35 +144,34 @@ class EnFrDataset(Dataset):
         Returns:
             _type_: _description_
         """
+
         token_list = []
         if lang.lang == "en":
-            words = self.en_tokenizer(string.lower())
+            words = self.en_tokenizer(sequence.lower())
         else:
-            words = self.fr_tokenizer(string.lower())
+            words = self.fr_tokenizer(sequence.lower())
+            
+        # truncate the word list if it exceeds the max allowed sequence length
+        words = words[:self.max_seq_length - 2] # -2 is to account for the appended SOS and EOS token
+        
+        token_list.append(CustomTokens.SOS.value)
         for word in words:
             token_list.append(lang.word2index[word])
+        
+        token_list.append(CustomTokens.EOS.value)
+        
+        # pad the remainder of the token list 
+        while len(token_list) < self.max_seq_length:
+            token_list.append(CustomTokens.PAD.value)
+        
         return token_list
- 
-    def _string_data_to_tokens(self, data, lang1, lang2, en_tokenizer, fr_tokenizer):
-        """Create tokenized pairs of english and french sentences
 
-        Args:
-            data (_type_): _description_
-            lang1 (_type_): _description_
-            lang2 (_type_): _description_
-            en_tokenizer (_type_): _description_
-            fr_tokenizer (_type_): _description_
-
-        Returns:
-            _type_: _description_
-        """
-        tokenized_data = []
-                
-        for i in tqdm(range(len(data))):
-            tokenized_pair = (self._string_to_token_list(data[i][0], lang1), self._string_to_token_list(data[i][1], lang2))
-            tokenized_data.append(tokenized_pair)
-        return tokenized_data
-
+        
+    def __getitem__(self, idx):
+        return torch.Tensor([self.data_pairs[idx][0], self.data_pairs[idx][1]])
+    
+    def __len__(self):
+        return len(self.data_pairs)
 
 class CustomTokens(Enum):
     """_summary_
@@ -161,6 +182,7 @@ class CustomTokens(Enum):
     SOS = 0
     EOS = 1
     PAD = 2
+    UNK = 3
     pass
 
 # Langs class
@@ -178,6 +200,7 @@ class Langs:
         # put the punctuations inside the index2word dict
         for i in string.punctuation:
             self.index2word[len(self.index2word)] = i
+            
         # the total number of special words
         self.n_words = len(self.index2word)
         
@@ -188,6 +211,7 @@ class Langs:
             tokens = en_tokenizer(sentence)
         else:
             tokens = fr_tokenizer(sentence)
+            
         for word in tokens:
             self.addWord(word)
             
