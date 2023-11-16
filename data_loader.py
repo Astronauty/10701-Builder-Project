@@ -109,13 +109,13 @@ class EnFrDataset(Dataset):
             pickle.dump(data_pairs, handle, protocol=pickle.HIGHEST_PROTOCOL)
         pass
 
-    def list_of_tokens_to_list_of_words(list_of_tokens, lang):
+    def list_of_tokens_to_list_of_words(self, list_of_tokens: torch.Tensor, lang):
         list_of_words = []
         for token in list_of_tokens:
             if token.item() == CustomTokens.EOS.value or token.item() == CustomTokens.PAD.value:
                 list_of_words.append("EOS")
                 break
-            list_of_words.append(lang.index2word[token])
+            list_of_words.append(lang.index2word[token.item()])
         return list_of_words
  
     def _string_data_to_tokens(self, data):
