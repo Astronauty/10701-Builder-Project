@@ -112,7 +112,10 @@ class EnFrDataset(Dataset):
     def list_of_tokens_to_list_of_words(list_of_tokens, lang):
         list_of_words = []
         for token in list_of_tokens:
-         list_of_words.append(lang.index2word[token])
+            if token.item() == CustomTokens.EOS.value or token.item() == CustomTokens.PAD.value:
+                list_of_words.append("EOS")
+                break
+            list_of_words.append(lang.index2word[token])
         return list_of_words
  
     def _string_data_to_tokens(self, data):
@@ -194,8 +197,8 @@ class Langs:
         self.word2index = {}
         # the dictionary for the appear counts of each word
         self.word2count = {}
-        # the dictionary to get the word through index (SOS: start of sentence, EOS: end of sentence)
-        self.index2word = {0:"SOS", 1:"EOS"}
+        # the dictionary to get the word through index (SOS: start of sentence, EOS: end of sentence, PAD: paddin, UNK: unknown)
+        self.index2word = {CustomTokens.SOS.value:"SOS", CustomTokens.EOS.value:"EOS", CustomTokens.PAD.value:"PAD", CustomTokens.UNK.value:"UNK"}
         
         # put the punctuations inside the index2word dict
         for i in string.punctuation:
