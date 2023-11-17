@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pickle
 from torchtext.data.metrics import bleu_score
+from torch.nn import MSELoss
 import math
 import time
 import torch.optim as optim
@@ -10,7 +11,8 @@ import matplotlib.pyplot as plt
 plt.switch_backend('agg')
 import matplotlib.ticker as ticker
 import numpy as np
-import data_loader
+from data_loader import *
+from torch.utils.data import Dataset, DataLoader
 
 class RNN:
     def __init__(self, input_dim, hidden_dim, output_dim, target_lang, dropout_p=0.1):
@@ -23,12 +25,11 @@ class RNN:
         total_loss = 0
         for pair in data_pairs:
             input, target = pair
-            input = torch.tensor(input).unsqueeze(0)
-            target = torch.tensor(target).unsqueeze(0)
-
-            print(input.size())
-            print(target.size())
-            print("herererer")
+            input = torch.round(input).to(torch.int64)
+            target = torch.round(target).to(torch.int64)
+            input = input.unsqueeze(0)
+            one_hot_target = F.one_hot(torch.round(target).to(torch.int64), num_classes=self.target_lang.n_words).float()
+            target = target.unsqueeze(0)
 
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
@@ -36,6 +37,9 @@ class RNN:
 
             encoder_outputs, encoder_hidden = self.encoder(input)
             decoder_outputs, _, _ = self.decoder(encoder_outputs, encoder_hidden, target)
+
+            #print(decoder_outputs[0])
+            #print(one_hot_target)
 
             # This is where I'm struggling to get the BLEU Score as a tensor rather than a float
             # I can only get BLEU to work with string inputs, but this and taking argmax in the
@@ -54,8 +58,9 @@ class RNN:
 
             # If someone can come up with a nice BLEU function, hopefully this should work:
             loss = criterion(
-                decoder_outputs, target
+                decoder_outputs[0], one_hot_target
             )
+            print(loss)
 
 
             loss.backward()
@@ -67,7 +72,7 @@ class RNN:
 
         return total_loss / len(data_pairs)
 
-    def train(self, data_points, n_epochs, learning_rate=0.001, print_every=100, plot_every=100):
+    def train(self, data_points, n_epochs, learning_rate=0.001, print_every=100, plot_every=100, criterion=bleu_score):
         start = time.time()
         plot_losses = []
         print_loss_total = 0  # Reset every print_every
@@ -75,7 +80,6 @@ class RNN:
 
         encoder_optimizer = optim.Adam(self.encoder.parameters(), lr=learning_rate)
         decoder_optimizer = optim.Adam(self.decoder.parameters(), lr=learning_rate)
-        criterion = bleu_score
 
         for epoch in range(1, n_epochs + 1):
             loss = self.train_epoch(data_points, encoder_optimizer, decoder_optimizer, criterion)
@@ -111,7 +115,7 @@ class EncoderRNN(nn.Module):
         return output, hidden
 
 class DecoderRNN(nn.Module):
-    def __init__(self, hidden_dim, output_dim, max_output_length=50, SOS_token=0):
+    def __init__(self, hidden_dim, output_dim, max_output_length=100, SOS_token=0):
         super().__init__()
         self.embedding = nn.Embedding(output_dim, hidden_dim)
         self.lstm = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
@@ -128,7 +132,6 @@ class DecoderRNN(nn.Module):
         for i in range(self.max_output_length):
             decoder_output, decoder_hidden = self.forward_step(decoder_input, decoder_hidden)
             decoder_outputs.append(decoder_output)
-            print(decoder_output)
 
             if (target_tensor is not None) and (i < target_tensor.size()[0]):
                 # Teacher forcing: Feed the target as the next input
@@ -170,12 +173,13 @@ def showPlot(points):
     ax.yaxis.set_major_locator(loc)
     plt.plot(points)
 
+
+
 #data_loader.pickle_data(nrows=10000)
 
-print(bleu_score([["1", "2"]],[["1", "3"]]))
 
 
-print("about to do en_lang")
+"""print("about to do en_lang")
 with open('en_lang.pickle', 'rb') as handle:
     en_lang = pickle.load(handle)
 print("done it")
@@ -184,13 +188,33 @@ with open('fr_lang.pickle', 'rb') as handle:
 with open('data_pairs.pickle', 'rb') as handle:
     data_pairs = pickle.load(handle)
 
-print(data_pairs[0])
+print(data_pairs[0])"""
+
+#data = EnFrDataset(used_abridged_data=True, max_seq_length=100)
+abridge_tag = "_abridged"
+path = Path(f'data/EnFrDataset{abridge_tag}.pickle')
+with open(path, 'rb') as handle:
+    if not path.exists():
+        data = EnFrDataset(used_abridged_data=True, max_seq_length=100)
+        data.pickle_all_data()
+    else:
+        data = pickle.load(handle)
+
+# print(data.__getitem__(0))
+# print(data.__len__())
+
+train_dataloader = DataLoader(data, batch_size=5000, shuffle=False, num_workers=0)
+train_sequence_pair = next(iter(train_dataloader))
+print(f"Feature batch shape: {train_sequence_pair.size()}")
+print(train_sequence_pair[0])
+en_lang, fr_lang = data.en_lang, data.fr_lang
+
 
 input_dim, hidden_dim, output_dim = en_lang.n_words, 100, fr_lang.n_words
 
 rnn = RNN(input_dim, hidden_dim, output_dim, fr_lang)
 
-rnn.train(data_pairs, 10)
+rnn.train(train_sequence_pair, 3, criterion=MSELoss(), learning_rate=0.1)
 
 
 

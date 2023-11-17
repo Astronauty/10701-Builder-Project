@@ -42,7 +42,7 @@ class EnFrDataset(Dataset):
         # Create the abridged dataset if it does not exist
         if  self.use_abridged_data and not self.abridged_dataset_path.exists():      
             print("Creating abridged dataset...")
-            full_dataset = pd.read_csv(self.full_dataset_path)
+            full_dataset = pd.read_csv(self.full_dataset_path, nrows=5000)
             abridged_dataset = full_dataset.head(5000)
             abridged_dataset.to_csv(self.abridged_dataset_path, index=False)
         
@@ -97,7 +97,7 @@ class EnFrDataset(Dataset):
      
      
     def pickle_data(self, nrows=None):
-        en_lang, fr_lang, data_pairs = self._data_preprocessing(self.en_tokenizer, self.fr_tokenizer, eng_str="en", fr_str="fr")
+        en_lang, fr_lang, data_pairs = self._data_preprocessing(self.en_tokenizer, self.fr_tokenizer)
 
         abridge_tag = "_abridged" if self.use_abridged_data else ""
 
@@ -107,6 +107,12 @@ class EnFrDataset(Dataset):
             pickle.dump(fr_lang, handle, protocol=pickle.HIGHEST_PROTOCOL)
         with open(f'data/data_pairs{abridge_tag}.pickle', 'wb') as handle:
             pickle.dump(data_pairs, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        pass
+    def pickle_all_data(self):
+        abridge_tag = "_abridged" if self.use_abridged_data else ""
+
+        with open(f'data/EnFrDataset{abridge_tag}.pickle', 'wb') as handle:
+            pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
         pass
 
     def list_of_tokens_to_list_of_words(self, list_of_tokens: torch.Tensor, lang):
