@@ -7,7 +7,6 @@ import torch
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
 class TokenEmbedder(Module):
 
     def __init__(self, vocabulary_size: int, embedding_size: int):
@@ -46,7 +45,7 @@ class PositionalEncoder(Module):
         positional_encodings[:, 1::2] = torch.cos(positions * shared_denominator)
 
         # add a batch dimension
-        positional_encodings.unsqueeze(0)
+        positional_encodings = positional_encodings.unsqueeze(0)
 
         # add positional encodings to buffer so that they are frozen and not affected by backprop
         self.register_buffer('positional_encodings', positional_encodings)
@@ -66,20 +65,18 @@ class TransformerMT(Module):
     def __init__(self,
                  source_vocabulary_size: int,
                  target_vocabulary_size: int,
-                 embedding_size: int,        # 512
+                 embedding_size: int,
                  max_num_embeddings: int,
-                 num_attention_heads: int,   # 8
-                 num_encoder_layers: int,    # 6
-                 num_decoder_layers: int,    # 6
-                 linear_layer_size: int,     # 2048
-                 dropout: float,             # 0.1
-                 activation: str,            # 'relu'
-                 layer_norm_eps: float,        # 1e-5
-                 batch_first: bool,          # True
-                 norm_first: bool,           # False
-                 bias: bool,                 # True
-                 # src_target_length
-                 ):
+                 num_attention_heads: int,
+                 num_encoder_layers: int,
+                 num_decoder_layers: int,
+                 linear_layer_size: int,
+                 dropout: float,
+                 activation: str,
+                 layer_norm_eps: float,
+                 batch_first: bool,
+                 norm_first: bool,
+                 bias: bool):
         super().__init__()
 
         self.source_token_embedder = TokenEmbedder(vocabulary_size=source_vocabulary_size,
@@ -105,26 +102,23 @@ class TransformerMT(Module):
 
         self.final_linear_layer = Linear(embedding_size, target_vocabulary_size)
 
-    def generate_mask(self, src, tgt):
+    def create_mask(self, src, tgt):
         src_seq_len = src.shape[0]
         tgt_seq_len = tgt.shape[0]
 
         tgt_mask = Transformer.generate_square_subsequent_mask(tgt_seq_len)
         src_mask = torch.zeros((src_seq_len, src_seq_len), device=DEVICE).type(torch.bool)
 
-        PAD = 2
-        src_padding_mask = (src == PAD).transpose(0, 1)
-        tgt_padding_mask = (tgt == PAD).transpose(0, 1)
-
+        PAD_IDX = 2
+        src_padding_mask = (src == PAD_IDX).transpose(0, 1)
+        tgt_padding_mask = (tgt == PAD_IDX).transpose(0, 1)
         return src_mask, tgt_mask, src_padding_mask, tgt_padding_mask
 
     def forward(self,
                 src: Tensor,
-                tgt: Tensor,
-                src_mask,
-                tgt_mask,
-                src_key_padding_mask,
-                tgt_key_padding_mask):
+                tgt: Tensor):
+        src_mask, tgt_mask, _, _ = self.create_mask(src, tgt)
+
         # token embeddings
         source_token_embedding = self.source_token_embedder(src)
 
@@ -138,9 +132,7 @@ class TransformerMT(Module):
         transformer_out = self.transformer(src=position_encoded_source_token_embedding,
                                            tgt=position_encoded_target_token_embedding,
                                            src_mask=src_mask,
-                                           tgt_mask=tgt_mask,
-                                           src_key_padding_mask=src_key_padding_mask,
-                                           tgt_key_padding_mask=tgt_key_padding_mask)
+                                           tgt_mask=tgt_mask)
 
         target_vocabulary_logits = self.final_linear_layer(transformer_out)
 
