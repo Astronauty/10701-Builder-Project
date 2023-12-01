@@ -116,13 +116,16 @@ class EnFrDataset(Dataset):
         pass
 
     def list_of_tokens_to_list_of_words(self, list_of_tokens: torch.Tensor, lang):
-        list_of_words = []
-        for token in list_of_tokens:
-            if token.item() == CustomTokens.EOS.value or token.item() == CustomTokens.PAD.value:
-                list_of_words.append("EOS")
-                break
-            list_of_words.append(lang.index2word[token.item()])
-        return list_of_words
+        list_of_sentences = []
+        for batch in list_of_tokens:
+            list_of_words = []
+            for token in batch:
+                if token.item() == CustomTokens.EOS.value or token.item() == CustomTokens.PAD.value:
+                    list_of_words.append("EOS")
+                    break
+                list_of_words.append(lang.index2word[token.item()])
+            list_of_sentences.append(list_of_words)
+        return list_of_sentences
  
     def _string_data_to_tokens(self, data):
         """Create tokenized pairs of english and french sentences
