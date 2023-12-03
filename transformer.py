@@ -7,6 +7,7 @@ import torch
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+
 class TokenEmbedder(Module):
 
     def __init__(self, vocabulary_size: int, embedding_size: int):
@@ -106,7 +107,7 @@ class TransformerMT(Module):
         src_seq_len = src.shape[0]
         tgt_seq_len = tgt.shape[0]
 
-        tgt_mask = Transformer.generate_square_subsequent_mask(tgt_seq_len)
+        tgt_mask = Transformer.generate_square_subsequent_mask(tgt_seq_len, device=DEVICE)
         src_mask = torch.zeros((src_seq_len, src_seq_len), device=DEVICE).type(torch.bool)
 
         PAD_IDX = 2
