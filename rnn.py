@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pickle
 from torchtext.data.metrics import bleu_score
-from torch.nn import MSELoss
+from torch.nn import MSELoss, CrossEntropyLoss
 import math
 import time
 import torch.optim as optim
@@ -23,8 +23,8 @@ class RNN:
 
     def train_epoch(self, data_pairs, encoder_optimizer, decoder_optimizer, criterion=bleu_score):
         total_loss = 0
-        for pair in data_pairs:
-            input, target = pair
+        for i in range(len(data_pairs[0])):
+            input, target = data_pairs[0][i], data_pairs[1][i]
             input = torch.round(input).to(torch.int64)
             target = torch.round(target).to(torch.int64)
             input = input.unsqueeze(0)
@@ -82,6 +82,7 @@ class RNN:
         decoder_optimizer = optim.Adam(self.decoder.parameters(), lr=learning_rate)
 
         for epoch in range(1, n_epochs + 1):
+            print("epoch number:", epoch)
             loss = self.train_epoch(data_points, encoder_optimizer, decoder_optimizer, criterion)
             print_loss_total += loss
             plot_loss_total += loss
@@ -172,6 +173,7 @@ def showPlot(points):
     loc = ticker.MultipleLocator(base=0.2)
     ax.yaxis.set_major_locator(loc)
     plt.plot(points)
+    plt.savefig('output_plot_300_epochs.png')
 
 
 
@@ -190,23 +192,24 @@ with open('data_pairs.pickle', 'rb') as handle:
 
 print(data_pairs[0])"""
 
-#data = EnFrDataset(used_abridged_data=True, max_seq_length=100)
+
 abridge_tag = "_abridged"
 path = Path(f'data/EnFrDataset{abridge_tag}.pickle')
-with open(path, 'rb') as handle:
-    if not path.exists():
-        data = EnFrDataset(used_abridged_data=True, max_seq_length=100)
-        data.pickle_all_data()
-    else:
+
+if not path.exists():
+    data = EnFrDataset(used_abridged_data=True, max_seq_length=100)
+    data.pickle_all_data()
+else:
+    with open(path, 'rb') as handle:
         data = pickle.load(handle)
 
 # print(data.__getitem__(0))
 # print(data.__len__())
 
-train_dataloader = DataLoader(data, batch_size=5000, shuffle=False, num_workers=0)
+train_dataloader = DataLoader(data, batch_size=32, shuffle=True, num_workers=0)
+print(data)
 train_sequence_pair = next(iter(train_dataloader))
-print(f"Feature batch shape: {train_sequence_pair.size()}")
-print(train_sequence_pair[0])
+print(f"Feature batch shape: {train_sequence_pair[0].size()}")
 en_lang, fr_lang = data.en_lang, data.fr_lang
 
 
@@ -214,7 +217,7 @@ input_dim, hidden_dim, output_dim = en_lang.n_words, 100, fr_lang.n_words
 
 rnn = RNN(input_dim, hidden_dim, output_dim, fr_lang)
 
-rnn.train(train_sequence_pair, 3, criterion=MSELoss(), learning_rate=0.1)
+rnn.train(train_sequence_pair, 300, criterion=CrossEntropyLoss(), learning_rate=0.005, plot_every=1)
 
 
 
