@@ -160,7 +160,7 @@ class Funnel_Transformer(nn.Module):
         src_mask = None
         # passes through the embedding and positional encoding like usual
         src_embedded = self.dropout(self.positional_encoding(self.encoder_embedding(src)))
-        tgt_embedded = self.dropout(self.positional_encoding(self.decoder_embedding(tgt)))
+        dec_output = self.dropout(self.positional_encoding(self.decoder_embedding(tgt)))
 
         enc_output = src_embedded
         # in the first block QKV share the same dimensionality
@@ -183,12 +183,10 @@ class Funnel_Transformer(nn.Module):
             enc_output = enc_output.permute(0,2,1)
             
         # save the final output to upsample to the decoder
-        upsample = enc_output
         for _ in range(self.encoder_blocks-1):
-            upsample = torch.cat((upsample,upsample),dim = -2)
-        enc_output = upsample + skip_connection
-        dec_output = tgt_embedded
-        dec_output = dec_output
+            enc_output = torch.cat((enc_output,enc_output),dim = -2)
+        enc_output = enc_output + skip_connection
+
         for dec_layer in self.decoder_layers:
             dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
 
