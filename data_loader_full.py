@@ -10,12 +10,12 @@ from enum import Enum
 from data_loader import CustomTokens
 import numpy as np
 
-
+## Usage
+#test_ds = Test_dataset("data/tokenized2_en.csv","data/tokenized2_fr.csv",en_lang, fr_lang, sequence_length=20)
 
 
 
 class Test_dataset(Dataset):
-    # def __init__(self, csv_file_x: str, csv_file_y: str, en_lang, fr_lang, sequence_length:int):
     def __init__(self, csv_file_x: str, csv_file_y: str, en_lang_path, fr_lang_path, sequence_length:int):
         self.en_lang_path = Path(en_lang_path)
         self.fr_lang_path = Path(fr_lang_path)
