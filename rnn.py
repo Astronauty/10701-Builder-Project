@@ -13,15 +13,39 @@ import matplotlib.ticker as ticker
 import numpy as np
 from data_loader import *
 from torch.utils.data import Dataset, DataLoader
+from pathlib import Path
+
 
 class RNN:
-    def __init__(self, input_dim, hidden_dim, output_dim, target_lang, dropout_p=0.1):
+    def __init__(self, input_dim, hidden_dim, output_dim, target_lang, dropout_prob=0.01):
+        """_summary_
+
+                Args:
+                    input_dim (int): number of english words in the dictionary
+                    hidden_dim (int): dimensions of the hidden layers of the LSTMs
+                    output_dim (int): number of french words in the dictionary
+                    dropout_prob (float): the probability of omitting a word input during training
+
+                Returns:
+
+                """
         super().__init__()
-        self.encoder = EncoderRNN(input_dim, hidden_dim, dropout_p=dropout_p)
+        # initiate the encoder and decoder
+        self.encoder = EncoderRNN(input_dim, hidden_dim, dropout_prob=dropout_prob)
         self.decoder = DecoderRNN(hidden_dim, output_dim)
         self.target_lang = target_lang
 
     def train_epoch(self, data_pairs, encoder_optimizer, decoder_optimizer, criterion=bleu_score):
+        """_summary_
+
+                Args:
+                    data_pairs (iterable): iterable of pairs of input and target tensors
+                    encoder_optimizer (torch optimizer): optimizer of the encoder network
+                    decoder_optimizer (torch optimizer): optimizer of the decoder network
+
+                Returns:
+                    _type_: _description_
+                """
         total_loss = 0
         for i in range(len(data_pairs[0])):
             input, target = data_pairs[0][i], data_pairs[1][i]
@@ -60,7 +84,7 @@ class RNN:
             loss = criterion(
                 decoder_outputs[0], one_hot_target
             )
-            print(loss)
+            print(loss.item())
 
 
             loss.backward()
@@ -90,7 +114,7 @@ class RNN:
             if epoch % print_every == 0:
                 print_loss_avg = print_loss_total / print_every
                 print_loss_total = 0
-                print('%s (%d %d%%) %.4f' % (timeSince(start, epoch / n_epochs),
+                print('time: %s; epoch: (%d %d%%); average total loss per epoch: %.4f' % (timeSince(start, epoch / n_epochs),
                                              epoch, epoch / n_epochs * 100, print_loss_avg))
 
             if epoch % plot_every == 0:
@@ -100,15 +124,43 @@ class RNN:
 
         showPlot(plot_losses)
 
+    def save(self, file_name):
+        Path("data/saved_rnns").mkdir(parents=True, exist_ok=True)
+        with open(f'data/saved_rnns/{file_name}.pickle', 'wb') as handle:
+            pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        pass
+
+    def test(self, data_pairs, criterion=bleu_score):
+        total_loss = 0
+        for i in range(len(data_pairs[0])):
+            input, target = data_pairs[0][i], data_pairs[1][i]
+            input = torch.round(input).to(torch.int64)
+            target = torch.round(target).to(torch.int64)
+            input = input.unsqueeze(0)
+            one_hot_target = F.one_hot(torch.round(target).to(torch.int64),
+                                       num_classes=self.target_lang.n_words).float()
+            target = target.unsqueeze(0)
+
+            encoder_outputs, encoder_hidden = self.encoder(input)
+            decoder_outputs, _, _ = self.decoder(encoder_outputs, encoder_hidden, target)
+
+            loss = criterion(
+                decoder_outputs[0], one_hot_target
+            )
+            print(loss)
+
+            total_loss += loss
+
+        return total_loss / len(data_pairs)
 
 class EncoderRNN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, dropout_p=0.1):
+    def __init__(self, input_dim, hidden_dim, dropout_prob=0.1):
         super().__init__()
         self.hidden_dim = hidden_dim
 
         self.embedding = nn.Embedding(input_dim, hidden_dim)
         self.lstm = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
-        self.dropout = nn.Dropout(dropout_p)
+        self.dropout = nn.Dropout(dropout_prob)
 
     def forward(self, input):
         embedded = self.dropout(self.embedding(input))
@@ -119,7 +171,7 @@ class DecoderRNN(nn.Module):
     def __init__(self, hidden_dim, output_dim, max_output_length=100, SOS_token=0):
         super().__init__()
         self.embedding = nn.Embedding(output_dim, hidden_dim)
-        self.lstm = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
+        self.LSTM = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
         self.out = nn.Linear(hidden_dim, output_dim)
         self.max_output_length = max_output_length
         self.SOS_token = SOS_token
@@ -150,21 +202,31 @@ class DecoderRNN(nn.Module):
     def forward_step(self, input, hidden):
         output = self.embedding(input)
         output = F.relu(output)
-        output, hidden = self.lstm(output, hidden)
+        output, hidden = self.LSTM(output, hidden)
         output = self.out(output)
         return output, hidden
 
+def my_bleu_score(somewhat_hot_output, one_hot_target):
+    output_tokens = torch.topk(somewhat_hot_output, 1)[1].squeeze()
+    target_tokens = torch.topk(one_hot_target, 1)[1].squeeze()
+    output_token_list = output_tokens.tolist()
+    output_token_str_list = [str(x) for x in output_token_list]
+    target_token_list = target_tokens.tolist()
+    target_token_str_list = [str(x) for x in target_token_list]
+    return bleu_score([output_token_str_list], [[target_token_str_list]])
 
-def asMinutes(s):
-    m = math.floor(s / 60)
-    s -= m * 60
-    return '%dm %ds' % (m, s)
+
+
+def asMinutes(secs):
+    mins = math.floor(secs / 60)
+    secs -= mins * 60
+    return '%dm %ds' % (mins, secs)
 def timeSince(since, percent):
     now = time.time()
-    s = now - since
-    es = s / (percent)
-    rs = es - s
-    return '%s (- %s)' % (asMinutes(s), asMinutes(rs))
+    secs = now - since
+    expected_secs = secs / (percent)
+    time_left = expected_secs - secs
+    return '%s (- %s)' % (asMinutes(secs), asMinutes(time_left))
 
 def showPlot(points):
     plt.figure()
@@ -175,49 +237,74 @@ def showPlot(points):
     plt.plot(points)
     plt.savefig('output_plot_300_epochs.png')
 
+def create_rnn(used_abridged_data=True, max_seq_length=100, batch_size=32, shuffle=True, num_workers=0, hidden_dim=100,
+               criterion=CrossEntropyLoss(), learning_rate=0.005, plot_every=1, print_every=1, n_epochs=50):
+    abridge_tag = "_abridged"
+    path = Path(f'data/EnFrDataset{abridge_tag}.pickle')
 
+    if not path.exists():
+        data = EnFrDataset(used_abridged_data=used_abridged_data, max_seq_length=max_seq_length)
+        data.pickle_all_data()
+    else:
+        with open(path, 'rb') as handle:
+            data = pickle.load(handle)
 
-#data_loader.pickle_data(nrows=10000)
+    # print(data.__getitem__(0))
+    # print(data.__len__())
 
+    train_dataloader = DataLoader(data, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+    print(data)
+    train_sequence_pair = next(iter(train_dataloader))
+    print(f"Feature batch shape: {train_sequence_pair[0].size()}")
+    en_lang, fr_lang = data.en_lang, data.fr_lang
 
+    input_dim, hidden_dim, output_dim = en_lang.n_words, hidden_dim, fr_lang.n_words
 
-"""print("about to do en_lang")
-with open('en_lang.pickle', 'rb') as handle:
-    en_lang = pickle.load(handle)
-print("done it")
-with open('fr_lang.pickle', 'rb') as handle:
-    fr_lang = pickle.load(handle)
-with open('data_pairs.pickle', 'rb') as handle:
-    data_pairs = pickle.load(handle)
+    rnn = RNN(input_dim, hidden_dim, output_dim, fr_lang)
 
-print(data_pairs[0])"""
+    rnn.train(train_sequence_pair, n_epochs=n_epochs, criterion=criterion, learning_rate=learning_rate, plot_every=plot_every, print_every=print_every)
 
+    return rnn
 
-abridge_tag = "_abridged"
-path = Path(f'data/EnFrDataset{abridge_tag}.pickle')
+def save_rnn(rnn, file_name):
+    rnn.save(file_name)
 
-if not path.exists():
-    data = EnFrDataset(used_abridged_data=True, max_seq_length=100)
-    data.pickle_all_data()
-else:
+def load_rnn(file_name):
+    with open(f"data/saved_rnns/{file_name}.pickle", 'rb') as handle:
+        return pickle.load(handle)
+
+def test_rnn(rnn, data_file_name, criterion=bleu_score):
+
+    rnn.encoder.dropout = nn.Dropout(0)
+
+    path = Path(f'data/{data_file_name}.pickle')
+
     with open(path, 'rb') as handle:
         data = pickle.load(handle)
+    print(len(data.data_pairs))
 
-# print(data.__getitem__(0))
-# print(data.__len__())
+    train_dataloader = DataLoader(data, batch_size=1, shuffle=True, num_workers=0)
+    print(train_dataloader)
+    cumulative_error = 0
+    for i in range(len(data.data_pairs)):
+        print(i)
+        train_sequence_pair = next(iter(train_dataloader))
+        cumulative_error += rnn.test(train_sequence_pair, criterion=criterion)
+    return cumulative_error/len(data.data_pairs)
 
-train_dataloader = DataLoader(data, batch_size=32, shuffle=True, num_workers=0)
-print(data)
-train_sequence_pair = next(iter(train_dataloader))
-print(f"Feature batch shape: {train_sequence_pair[0].size()}")
-en_lang, fr_lang = data.en_lang, data.fr_lang
+"""rnn = create_rnn(n_epochs=10)
+save_rnn(rnn, "10_epoch_on_abridged")"""
 
 
-input_dim, hidden_dim, output_dim = en_lang.n_words, 100, fr_lang.n_words
+rnn = load_rnn("50_epoch_on_abridged")
 
-rnn = RNN(input_dim, hidden_dim, output_dim, fr_lang)
+print(test_rnn(rnn, "EnFrDataset_abridged", criterion=my_bleu_score))
 
-rnn.train(train_sequence_pair, 300, criterion=CrossEntropyLoss(), learning_rate=0.005, plot_every=1)
+print(torch.cuda.is_available())
+
+
+
+
 
 
 
