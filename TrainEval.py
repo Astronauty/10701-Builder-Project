@@ -1,34 +1,28 @@
 import torch
 from torch.nn import Module
-from torch.utils.data import DataLoader
-from data_loader import EnFrDataset
+
+from DataLoaderProvider import DataLoaderProvider
 import matplotlib.pyplot as plt
+
+
+def unstage_plot():
+    plt.clf()
+    plt.close()
 
 
 class TrainEval:
 
     def __init__(self,
-                 use_abridged_dataset,
+                 dataloader_provider: DataLoaderProvider,
                  num_epochs,
-                 batch_size,
                  optimizer,
                  loss_function,
                  model: Module):
         self.num_epochs = num_epochs
-        self.batch_size = batch_size
         self.optimizer = optimizer
         self.loss_function = loss_function
 
-        # load dataset
-        dataset = EnFrDataset(used_abridged_data=use_abridged_dataset,
-                              max_seq_length=100)
-
-        # init dataloaders
-        self.train_dataloader = DataLoader(dataset=dataset,
-                                           batch_size=batch_size,
-                                           shuffle=True,
-                                           num_workers=1)
-
+        self.train_dataloader = dataloader_provider.get_train_dataloader()
         # TODO: once dataloader has validation and test splits, load those here and update train loop accordingly.
 
         # move model to correct device
@@ -42,6 +36,7 @@ class TrainEval:
     def execute(self):
         self._run_all_epochs()
 
+        self._save_loss_plot()
         self._display_loss_plot()
 
     def _run_all_epochs(self):
@@ -81,14 +76,20 @@ class TrainEval:
     def _checkpoint(self):
         pass
 
+    def _stage_plot(self, values, x_label, y_label):
+        plt.plot(values)
+        plt.xlabel(x_label)
+        plt.ylabel(y_label)
+
     def _display_loss_plot(self):
-        plt.plot(self.epoch_train_losses)
-        plt.ylabel('train loss')
-        plt.xlabel('epoch')
+        self._stage_plot(self.epoch_train_losses, 'train loss', 'epoch')
         plt.show()
+        unstage_plot()
 
     def _save_loss_plot(self):
-        pass
+        self._stage_plot(self.epoch_train_losses, 'train loss', 'epoch')
+        plt.savefig('loss.png')
+        unstage_plot()
 
     def _display_bleu_plot(self):
         pass
