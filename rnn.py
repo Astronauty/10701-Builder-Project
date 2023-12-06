@@ -18,7 +18,7 @@ from pathlib import Path
 
 class RNN:
     def __init__(self, input_dim, hidden_dim, output_dim, target_lang, dropout_prob=0.01):
-        """_summary_
+        """Initialises the RNN
 
                 Args:
                     input_dim (int): number of english words in the dictionary
@@ -27,7 +27,7 @@ class RNN:
                     dropout_prob (float): the probability of omitting a word input during training
 
                 Returns:
-
+                none
                 """
         super().__init__()
         # initiate the encoder and decoder
@@ -36,7 +36,7 @@ class RNN:
         self.target_lang = target_lang
 
     def train_epoch(self, data_pairs, encoder_optimizer, decoder_optimizer, criterion=bleu_score):
-        """_summary_
+        """Runs an epoch of training on data data_pairs
 
                 Args:
                     data_pairs (iterable): iterable of pairs of input and target tensors
@@ -44,7 +44,7 @@ class RNN:
                     decoder_optimizer (torch optimizer): optimizer of the decoder network
 
                 Returns:
-                    _type_: _description_
+                    float: average loss across the epoch
                 """
         total_loss = 0
         for i in range(len(data_pairs[0])):
@@ -97,6 +97,19 @@ class RNN:
         return total_loss / len(data_pairs)
 
     def train(self, data_points, n_epochs, learning_rate=0.001, print_every=100, plot_every=100, criterion=bleu_score):
+        """Runs multiple epochs to train the RNN
+
+                        Args:
+                            data_pairs (iterable): iterable of pairs of input and target tensors
+                            n_epochs (int): number of epochs to train
+                            learning_rate (float): learning rate while training
+                            print_every (int): how often (in terms of epochs) while training to print the performance across the last set of epochs
+                            plot_every (int): how often to plot performance while training for the exported graph
+                            criterion (function): the loss function being trained on.
+
+                        Returns:
+                            none
+                        """
         start = time.time()
         plot_losses = []
         print_loss_total = 0  # Reset every print_every
@@ -125,12 +138,29 @@ class RNN:
         showPlot(plot_losses)
 
     def save(self, file_name):
+        """Saves the RNN as a pickle file
+
+                        Args:
+                            file_name (string): the name of the file the RNN will be saved as
+
+                        Returns:
+                            none
+                        """
         Path("data/saved_rnns").mkdir(parents=True, exist_ok=True)
         with open(f'data/saved_rnns/{file_name}.pickle', 'wb') as handle:
             pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
         pass
 
     def test(self, data_pairs, criterion=bleu_score):
+        """Evaluates the RNN on a test set
+
+                        Args:
+                            data_pairs (iterable): iterable of pairs of input and target tensors
+                            criterion (function): the loss function
+
+                        Returns:
+                            float: average loss across the test data
+                        """
         total_loss = 0
         for i in range(len(data_pairs[0])):
             input, target = data_pairs[0][i], data_pairs[1][i]
@@ -154,7 +184,18 @@ class RNN:
         return total_loss / len(data_pairs)
 
 class EncoderRNN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, dropout_prob=0.1):
+    # The encoder LSTM of the RNN
+    def __init__(self, input_dim, hidden_dim, dropout_prob=0.01):
+        """Initialises the encoder LSTM
+
+                        Args:
+                            input_dim (int): dimension of the input data - i.e. size of the English dictionary
+                            hidden_dim (int): the size of the hidden LSTM layer
+                            dropout_prob (float): how often a word is left out
+
+                        Returns:
+                            none
+                        """
         super().__init__()
         self.hidden_dim = hidden_dim
 
@@ -163,6 +204,15 @@ class EncoderRNN(nn.Module):
         self.dropout = nn.Dropout(dropout_prob)
 
     def forward(self, input):
+        """Forward pass on an input
+
+                        Args:
+                            input (iterable): iterable of input tensors
+
+                        Returns:
+                            output (list): a list of somewhat hot vectors, that is vectors supposed to emulate one-hot vectors hopefully close to the desired translation list of one hot vector
+
+                        """
         embedded = self.dropout(self.embedding(input))
         output, hidden = self.lstm(embedded)
         return output, hidden
@@ -296,12 +346,15 @@ def test_rnn(rnn, data_file_name, criterion=bleu_score):
 save_rnn(rnn, "10_epoch_on_abridged")"""
 
 
-rnn = load_rnn("50_epoch_on_abridged")
+"""rnn = load_rnn("50_epoch_on_abridged")
 
 print(test_rnn(rnn, "EnFrDataset_abridged", criterion=my_bleu_score))
 
-print(torch.cuda.is_available())
-
+print(torch.cuda.is_available())"""
+"""candidate_corpus = [['My', 'full', 'pytorch', 'test']]
+references_corpus = [[['My', 'full', 'pytorch', 'test', "sucks"]]]
+print(bleu_score(candidate_corpus, references_corpus))
+print(bleu_score([["1", "2", "4", "5"]], [[["1", "2", "4", "5", "6"]]]))"""
 
 
 
