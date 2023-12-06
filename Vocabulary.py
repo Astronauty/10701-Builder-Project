@@ -34,7 +34,11 @@ class Vocabulary:
         # delete rare keys
         for token_id, token_count in self.token2count.items():
             if token_count < threshold:
+                index = self.token2index[token_id]
+                del self.index2token[index]
                 del self.token2index[token_id]
+                del self.token2count[token_id]
+                self.vocabulary_size -= 1
 
         print(f"token count after filtering out rare words: {len(self.token2index)}")
 

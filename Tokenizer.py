@@ -47,6 +47,8 @@ class Tokenizer:
         fr_token_ids = self._truncation_sos_eos_padding(fr_token_ids)
         row['fr'] = fr_token_ids
 
+        if len(en_token_ids) != len(fr_token_ids):
+            print("ALERT!!!")
         return row
 
 
