@@ -83,3 +83,34 @@ class Test_dataset(Dataset):
                 list_of_words.append(lang.index2word[token.item()])
             list_of_sentences.append(list_of_words)
         return list_of_sentences
+    
+    # test_ds = Test_dataset("data/tokenized_train_en.csv","data/tokenized_train_fr.csv","data/en_lang_80.pickle", "data/fr_lang_80.pickle", sequence_length=100)
+
+    # dataloader = DataLoader(test_ds, batch_size=32, shuffle=True, num_workers=6)
+
+    # epoch_loss = []
+    # total_loss = 0.0
+    # for small_epoch in range(1000):
+    #     f_transformer.train()
+    #     small_epoch_count = 0
+    #     np.random.seed()
+    #     for it in dataloader:
+    #         src_data, tgt_data = it
+    #         src_data = src_data.to(device)
+    #         src_data = torch.squeeze(src_data)
+    #         tgt_data = tgt_data.to(device)
+    #         tgt_data = torch.squeeze(tgt_data)
+    #         optimizer.zero_grad()
+    #         output= f_transformer(src_data, tgt_data[:, :-1])
+    #         loss = loss_criterion(output[0].contiguous().view(-1, tgt_vocab_size), tgt_data[:, 1:].contiguous().view(-1))
+    #         loss.backward()
+    #         optimizer.step()
+    #         total_loss += loss.item()
+    #         del loss
+    #         del output
+    #     epoch_loss.append(total_loss)
+    #     writer.add_scalar('training loss',
+    #                     total_loss,
+    #                         small_epoch)
+    #     print(f"Small Epoch: {small_epoch+1}, Epoch Loss: {total_loss}")
+    #     total_loss = 0.0
