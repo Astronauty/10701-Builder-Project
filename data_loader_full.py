@@ -11,12 +11,18 @@ from data_loader import CustomTokens
 import numpy as np
 
 ## Usage
-#test_ds = Test_dataset("data/tokenized2_en.csv","data/tokenized2_fr.csv",en_lang, fr_lang, sequence_length=20)
-
+## to use this dataset use the following line
+#1. the csv_file_x and csv_file_y should be the path to the data like the following
+# ex. "data/tokenized_train_en.csv"
+#2. the en_lang_path and fr_lang_path should be the path to the dictionaries like the following
+# ex. "data/en_lang_80.pickle"
+#3. the sequence_length can be what ever length you want
+# ex.1000
+#test_ds = Test_dataset(tokenized_x,tokenized_y,en_lang, fr_lang, sequence_length=100)
 
 
 class Test_dataset(Dataset):
-    def __init__(self, csv_file_x: str, csv_file_y: str, en_lang_path, fr_lang_path, sequence_length:int):
+    def __init__(self, csv_file_x: str, csv_file_y: str, en_lang_path: str, fr_lang_path: str, sequence_length:int):
         self.en_lang_path = Path(en_lang_path)
         self.fr_lang_path = Path(fr_lang_path)
         self.csv_file_path_x = csv_file_x
@@ -27,11 +33,11 @@ class Test_dataset(Dataset):
 
         #check if dictionaries exists
 
-        if not self.en_lang_path.exists():
-            with open('data/en_lang_90.pickle', 'rb') as handle:
+        if self.en_lang_path.exists():
+            with open(self.en_lang_path, 'rb') as handle:
                 self.en_lang = pickle.load(handle)
-        if not self.fr_lang_path.exists():
-            with open('data/fr_lang_90.pickle', 'rb') as handle:
+        if self.fr_lang_path.exists():
+            with open(self.fr_lang_path, 'rb') as handle:
                 self.fr_lang = pickle.load(handle)
 
     def __len__(self):
