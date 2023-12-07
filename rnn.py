@@ -347,7 +347,7 @@ for learning_rate in [0.001, 0.05, 0.01]:
 
 
 """rnn = load_rnn("1_epoch_on_abridged")
-
+print("hello :)")
 print(test_rnn(rnn, criterion=CrossEntropyLoss()))
 print(809.9715385437012)"""
 
