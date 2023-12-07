@@ -11,9 +11,12 @@ import matplotlib.pyplot as plt
 plt.switch_backend('agg')
 import matplotlib.ticker as ticker
 import numpy as np
-from data_loader import *
+from data_loader_full import *
 from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
+from tqdm import tqdm
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class RNN:
@@ -35,7 +38,8 @@ class RNN:
         self.decoder = DecoderRNN(hidden_dim, output_dim)
         self.target_lang = target_lang
 
-    def train_epoch(self, data_pairs, encoder_optimizer, decoder_optimizer, criterion=bleu_score):
+
+    def train_batch(self, data_pairs, encoder_optimizer, decoder_optimizer, criterion=bleu_score, max_seq_length=60):
         """Runs an epoch of training on data data_pairs
 
                 Args:
@@ -47,20 +51,18 @@ class RNN:
                     float: average loss across the epoch
                 """
         total_loss = 0
-        for i in range(len(data_pairs[0])):
-            input, target = data_pairs[0][i], data_pairs[1][i]
+        for i in tqdm(range(len(data_pairs[0]))):
+            input, target = data_pairs[0][i].to(device), data_pairs[1][i].to(device)
             input = torch.round(input).to(torch.int64)
             target = torch.round(target).to(torch.int64)
-            input = input.unsqueeze(0)
             one_hot_target = F.one_hot(torch.round(target).to(torch.int64), num_classes=self.target_lang.n_words).float()
             target = target.unsqueeze(0)
 
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
 
-
             encoder_outputs, encoder_hidden = self.encoder(input)
-            decoder_outputs, _, _ = self.decoder(encoder_outputs, encoder_hidden, target)
+            decoder_outputs, _, _ = self.decoder(encoder_outputs, encoder_hidden, target[0])
 
             #print(decoder_outputs[0])
             #print(one_hot_target)
@@ -81,10 +83,11 @@ class RNN:
             )"""
 
             # If someone can come up with a nice BLEU function, hopefully this should work:
+
+
             loss = criterion(
-                decoder_outputs[0], one_hot_target
+                decoder_outputs[0], one_hot_target[0]
             )
-            print(loss.item())
 
 
             loss.backward()
@@ -96,7 +99,7 @@ class RNN:
 
         return total_loss / len(data_pairs)
 
-    def train(self, data_points, n_epochs, learning_rate=0.001, print_every=100, plot_every=100, criterion=bleu_score):
+    def train(self, data_points, n_epochs, batches_per_epoch, plot_name, learning_rate=0.001, print_every=100, plot_every=100, criterion=bleu_score):
         """Runs multiple epochs to train the RNN
 
                         Args:
@@ -119,23 +122,26 @@ class RNN:
         decoder_optimizer = optim.Adam(self.decoder.parameters(), lr=learning_rate)
 
         for epoch in range(1, n_epochs + 1):
-            print("epoch number:", epoch)
-            loss = self.train_epoch(data_points, encoder_optimizer, decoder_optimizer, criterion)
-            print_loss_total += loss
-            plot_loss_total += loss
+            for batch in range(batches_per_epoch):
+                print("epoch number:", epoch, " batch number:", batch)
+                loss = self.train_batch(data_points, encoder_optimizer, decoder_optimizer, criterion)
+                print_loss_total += loss
+                plot_loss_total += loss
 
-            if epoch % print_every == 0:
-                print_loss_avg = print_loss_total / print_every
-                print_loss_total = 0
-                print('time: %s; epoch: (%d %d%%); average total loss per epoch: %.4f' % (timeSince(start, epoch / n_epochs),
-                                             epoch, epoch / n_epochs * 100, print_loss_avg))
+                if batch % print_every == 0:
+                    print_loss_avg = print_loss_total / print_every
+                    print_loss_total = 0
+                    print('time: %s; batch: (%d %d%%); epoch: (%d %d%%); average total loss per epoch: %.4f' %
+                          (timeSince(start, (batches_per_epoch * epoch + batch) / (n_epochs * batches_per_epoch)),
+                                                 batch, batch / batches_per_epoch * 100, epoch, epoch / n_epochs * 100, print_loss_avg))
 
-            if epoch % plot_every == 0:
-                plot_loss_avg = plot_loss_total / plot_every
-                plot_losses.append(plot_loss_avg)
-                plot_loss_total = 0
+                if batch % plot_every == 0:
+                    plot_loss_avg = plot_loss_total / plot_every
+                    plot_losses.append(plot_loss_avg)
+                    plot_loss_total = 0
 
-        showPlot(plot_losses)
+        showPlot(plot_losses, plot_name, batches_per_epoch)
+        plot_losses
 
     def save(self, file_name):
         """Saves the RNN as a pickle file
@@ -199,9 +205,10 @@ class EncoderRNN(nn.Module):
         super().__init__()
         self.hidden_dim = hidden_dim
 
-        self.embedding = nn.Embedding(input_dim, hidden_dim)
-        self.lstm = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
-        self.dropout = nn.Dropout(dropout_prob)
+        self.embedding = nn.Embedding(input_dim, hidden_dim).to(device)
+        self.lstm = nn.LSTM(hidden_dim, hidden_dim, batch_first=True).to(device)
+        self.dropout = nn.Dropout(dropout_prob).to(device)
+        self.to(device)
 
     def forward(self, input):
         """Forward pass on an input
@@ -218,17 +225,18 @@ class EncoderRNN(nn.Module):
         return output, hidden
 
 class DecoderRNN(nn.Module):
-    def __init__(self, hidden_dim, output_dim, max_output_length=100, SOS_token=0):
+    def __init__(self, hidden_dim, output_dim, max_output_length=60, SOS_token=0):
         super().__init__()
-        self.embedding = nn.Embedding(output_dim, hidden_dim)
-        self.LSTM = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
-        self.out = nn.Linear(hidden_dim, output_dim)
+        self.embedding = nn.Embedding(output_dim, hidden_dim).to(device)
+        self.LSTM = nn.LSTM(hidden_dim, hidden_dim, batch_first=True).to(device)
+        self.out = nn.Linear(hidden_dim, output_dim).to(device)
         self.max_output_length = max_output_length
         self.SOS_token = SOS_token
+        self.to(device)
 
     def forward(self, encoder_outputs, encoder_hidden, target_tensor=None):
         batch_size = encoder_outputs.size(0)
-        decoder_input = torch.empty(batch_size, 1, dtype=torch.long).fill_(self.SOS_token)
+        decoder_input = torch.empty(batch_size, 1, dtype=torch.long).fill_(self.SOS_token).to(device)
         decoder_hidden = encoder_hidden
         decoder_outputs = []
 
@@ -278,29 +286,26 @@ def timeSince(since, percent):
     time_left = expected_secs - secs
     return '%s (- %s)' % (asMinutes(secs), asMinutes(time_left))
 
-def showPlot(points):
+def showPlot(points, plot_name, batches_per_epoch):
     plt.figure()
     fig, ax = plt.subplots()
-    # this locator puts ticks at regular intervals
-    loc = ticker.MultipleLocator(base=0.2)
-    ax.yaxis.set_major_locator(loc)
-    plt.plot(points)
-    plt.savefig('output_plot_300_epochs.png')
+    x1 = np.arange(len(points) + 1)[1:]
+    x = []
+    print(x1)
+    for i in range(len(x1)):
+        x.append(x1[i]/batches_per_epoch)
+    plt.plot(x, points)
+    print(x)
+    print(points)
 
-def create_rnn(used_abridged_data=True, max_seq_length=100, batch_size=32, shuffle=True, num_workers=0, hidden_dim=100,
-               criterion=CrossEntropyLoss(), learning_rate=0.005, plot_every=1, print_every=1, n_epochs=50):
-    abridge_tag = "_abridged"
-    path = Path(f'data/EnFrDataset{abridge_tag}.pickle')
+    plt.xlabel("Batch number")
+    plt.ylabel("Average cross entropy loss across batch")
+    plt.savefig(f'{plot_name}.png')
 
-    if not path.exists():
-        data = EnFrDataset(used_abridged_data=used_abridged_data, max_seq_length=max_seq_length)
-        data.pickle_all_data()
-    else:
-        with open(path, 'rb') as handle:
-            data = pickle.load(handle)
-
-    # print(data.__getitem__(0))
-    # print(data.__len__())
+def create_rnn(max_seq_length=60, batch_size=5000, shuffle=True, plot_name="no_plot_name", num_workers=0, hidden_dim=100,
+               criterion=CrossEntropyLoss(), learning_rate=0.005, plot_every=1, print_every=1, n_epochs=50, batches_per_epoch=180):
+    data = Test_dataset("data/tokenized_train_en_abrdge.csv", "data/tokenized_train_fr_abrdge.csv", "data/en_lang_abridged_90.pickle",
+                           "data/fr_lang_abridged_90.pickle", sequence_length=max_seq_length)
 
     train_dataloader = DataLoader(data, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     print(data)
@@ -312,7 +317,7 @@ def create_rnn(used_abridged_data=True, max_seq_length=100, batch_size=32, shuff
 
     rnn = RNN(input_dim, hidden_dim, output_dim, fr_lang)
 
-    rnn.train(train_sequence_pair, n_epochs=n_epochs, criterion=criterion, learning_rate=learning_rate, plot_every=plot_every, print_every=print_every)
+    rnn.train(train_sequence_pair, n_epochs, batches_per_epoch, plot_name, criterion=criterion, learning_rate=learning_rate, plot_every=plot_every, print_every=print_every)
 
     return rnn
 
@@ -342,8 +347,8 @@ def test_rnn(rnn, data_file_name, criterion=bleu_score):
         cumulative_error += rnn.test(train_sequence_pair, criterion=criterion)
     return cumulative_error/len(data.data_pairs)
 
-"""rnn = create_rnn(n_epochs=10)
-save_rnn(rnn, "10_epoch_on_abridged")"""
+rnn = create_rnn(n_epochs=10, batch_size = 5000, batches_per_epoch=20, hidden_dim=100, plot_name="test_plot")
+save_rnn(rnn, "10_epoch_on_abridged")
 
 
 """rnn = load_rnn("50_epoch_on_abridged")
