@@ -72,7 +72,7 @@ class Test_dataset(Dataset):
     def get_tgt_lang_size(self):
         return self.fr_lang.n_words
     
-    def list_of_tokens_to_list_of_words(self, list_of_tokens: torch.Tensor, lang):
+    def list_of_tokens_to_list_of_words(self, list_of_tokens: torch.Tensor, test: bool,lang ):
         list_of_sentences = []
         for batch in list_of_tokens:
             list_of_words = []
@@ -81,7 +81,10 @@ class Test_dataset(Dataset):
                     list_of_words.append("EOS")
                     break
                 list_of_words.append(lang.index2word[token.item()])
-            list_of_sentences.append(list_of_words)
+            if test:
+                list_of_sentences.append([list_of_words])
+            else:
+                list_of_sentences.append(list_of_words)
         return list_of_sentences
     
     # test_ds = Test_dataset("data/tokenized_train_en.csv","data/tokenized_train_fr.csv","data/en_lang_80.pickle", "data/fr_lang_80.pickle", sequence_length=100)
