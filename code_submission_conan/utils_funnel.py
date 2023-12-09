@@ -361,10 +361,6 @@ def inference(model, src_data, tgt_data, out_seq_len):
     y_init = torch.LongTensor([CustomTokens.SOS.value]).unsqueeze(0).cuda(1).view(1, 1)
     y_init = y_init.repeat(batch_size,1)
 
-    # generate output positional encoding
-    toy_embeddings = model.decoder_embedding(tgt_data)
-    output_encoding = model.positional_encoding(toy_embeddings)
-
     # generate the encoder output from the encoder
     _, encoder_output = model(src_data, tgt_data)
 
@@ -376,7 +372,7 @@ def inference(model, src_data, tgt_data, out_seq_len):
         # get the embedding of the decoder input
         inf_emb = model.decoder_embedding(y_init)
         # added up with the positional encoding
-        output_encoding_for_inference = inf_emb + output_encoding[:,:y_init.shape[1],:]
+        output_encoding_for_inference = inf_emb + model.positional_encoding.pe[:,:y_init.shape[1]]
         # get the decoder output and the probabilities of all the values
         decoder_output = model.pass_through_decoder(output_encoding_for_inference, encoder_output, tgt_mask)
         decoder_output = model.fc(decoder_output)
