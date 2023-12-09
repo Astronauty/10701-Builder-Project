@@ -55,7 +55,7 @@ class PositionalEncoder(Module):
 
     def forward(self, token_embeddings):
         # overlay positional encodings onto token embeddings (via addition)
-        position_encoded_token_embeddings = token_embeddings + self.positional_encodings[:, :self.embedding_size]
+        position_encoded_token_embeddings = token_embeddings + self.positional_encodings[:, :token_embeddings.size(1)]
 
         # apply dropout before returning
         return self.dropout(position_encoded_token_embeddings)
@@ -89,30 +89,34 @@ class TransformerMT(Module):
         self.positional_encoder = PositionalEncoder(max_num_embeddings=max_num_embeddings,
                                                     embedding_size=embedding_size)
 
-        self.transformer = Transformer(d_model=embedding_size,
-                                       nhead=num_attention_heads,
-                                       num_encoder_layers=num_encoder_layers,
-                                       num_decoder_layers=num_decoder_layers,
-                                       dim_feedforward=linear_layer_size,
-                                       dropout=dropout,
-                                       activation=activation,
-                                       layer_norm_eps=layer_norm_eps,
-                                       batch_first=batch_first,
-                                       norm_first=norm_first,
-                                       bias=bias)
+        self.transformer: Transformer = Transformer(d_model=embedding_size,
+                                                    nhead=num_attention_heads,
+                                                   num_encoder_layers=num_encoder_layers,
+                                                   num_decoder_layers=num_decoder_layers,
+                                                   dim_feedforward=linear_layer_size,
+                                                   dropout=dropout,
+                                                   activation=activation,
+                                                   layer_norm_eps=layer_norm_eps,
+                                                   batch_first=batch_first,
+                                                   norm_first=norm_first,
+                                                   bias=bias)
 
         self.final_linear_layer = Linear(embedding_size, target_vocabulary_size)
 
-    def create_mask(self, src, tgt):
-        src_seq_len = src.shape[0]
-        tgt_seq_len = tgt.shape[0]
-
-        tgt_mask = Transformer.generate_square_subsequent_mask(tgt_seq_len, device=DEVICE)
-        src_mask = torch.zeros((src_seq_len, src_seq_len), device=DEVICE).type(torch.bool)
-
+    def create_mask(self, src=None, tgt=None):
         PAD_IDX = 2
-        src_padding_mask = (src == PAD_IDX).transpose(0, 1)
-        tgt_padding_mask = (tgt == PAD_IDX).transpose(0, 1)
+        src_mask, src_padding_mask = None, None
+        if src is not None:
+            src_seq_len = src.shape[1]
+            src_mask = torch.zeros((src_seq_len, src_seq_len), device=DEVICE).type(torch.bool)
+            src_padding_mask = (src == PAD_IDX)
+
+        tgt_mask, tgt_padding_mask = None, None
+        if tgt is not None:
+            tgt_seq_len = tgt.shape[1]
+            tgt_mask = Transformer.generate_square_subsequent_mask(tgt_seq_len, device=DEVICE)
+            tgt_padding_mask = (tgt == PAD_IDX)
+
         return src_mask, tgt_mask, src_padding_mask, tgt_padding_mask
 
     def forward(self,
@@ -139,3 +143,29 @@ class TransformerMT(Module):
 
         return target_vocabulary_logits
 
+    def encode(self, src: Tensor):
+        src_mask, _, _, _ = self.create_mask(src=src)
+
+        source_token_embedding = self.source_token_embedder(src)
+
+        position_encoded_source_token_embedding = self.positional_encoder(source_token_embedding)
+
+        encoder_out = self.transformer.encoder(src=position_encoded_source_token_embedding,
+                                               mask=src_mask)
+
+        return encoder_out
+
+    def decode(self, encoder_out: Tensor, tgt: Tensor):
+        _, tgt_mask, _, _ = self.create_mask(tgt=tgt)
+
+        target_token_embedding = self.target_token_embedder(tgt)
+
+        position_encoded_target_token_embedding = self.positional_encoder(target_token_embedding)
+
+        decoder_out = self.transformer.decoder(tgt=position_encoded_target_token_embedding,
+                                               memory=encoder_out,
+                                               tgt_mask=tgt_mask)
+
+        target_vocabulary_logits = self.final_linear_layer(decoder_out)
+
+        return target_vocabulary_logits

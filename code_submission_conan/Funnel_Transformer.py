@@ -18,13 +18,16 @@ class MultiHeadAttention(nn.Module):
         self.num_heads = num_heads
         self.d_k = d_model // num_heads # d_k dimensionality of the word embeddings in each head
         
+        #initiate layers
         self.W_q = nn.Linear(d_model, d_model)
         self.W_k = nn.Linear(d_model, d_model)
         self.W_v = nn.Linear(d_model, d_model)
         self.W_o = nn.Linear(d_model, d_model)
         
     def scaled_dot_product_attention(self, Q, K, V, mask=None):
+        # QK multiply to create the attention map
         scores = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(self.d_k) # Q^T*K and normalize by sqrt(d_k)
+        # masking for casual transformer
         if mask is not None:
             scores = scores.masked_fill(mask == 0, -1e9) # convert zeros to -1e9 to force softmax to zero
         attention = nn.Softmax(dim=-1)(scores)
@@ -36,6 +39,7 @@ class MultiHeadAttention(nn.Module):
         return x.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
     
     def combine_heads(self, x):
+        # combining heads after passing through dot product attention
         batch_size, _, seq_len, d_model = x.size()
         return x.transpose(1, 2).contiguous().view(batch_size, -1, self.num_heads * self.d_k)
     
@@ -48,7 +52,7 @@ class MultiHeadAttention(nn.Module):
         output = self.W_o(self.combine_heads(attn_output))
         return output
 
-
+# feed forward block after the multi-head attention
 class PositionWiseFeedForward(nn.Module):
     def __init__(self, d_model, d_ff):
         super(PositionWiseFeedForward, self).__init__()
@@ -59,15 +63,15 @@ class PositionWiseFeedForward(nn.Module):
     def forward(self, x):
         return self.fc2(self.relu(self.fc1(x)))
 
-
+# positional encoding for the inpu output embeddings
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_seq_length):
         super(PositionalEncoding, self).__init__()
-        
+        # first create a tensor for the embedding
         pe = torch.zeros(max_seq_length, d_model)
         position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model))
-        
+        # implement the postional embedding in the paper
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         
@@ -75,7 +79,7 @@ class PositionalEncoding(nn.Module):
         
     def forward(self, x):
         return x + self.pe[:, :x.size(1)]
-
+# normal vannilla Transformer Encoder layer
 class EncoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
         super(EncoderLayer, self).__init__()
@@ -91,7 +95,8 @@ class EncoderLayer(nn.Module):
         ff_output = self.feed_forward(x)
         x = self.norm2(x + self.dropout(ff_output))
         return x
-    
+
+# Encoder layer of the funnel transformer
 class EncoderLayer_funnel(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
         super(EncoderLayer_funnel, self).__init__()
@@ -102,12 +107,14 @@ class EncoderLayer_funnel(nn.Module):
         self.dropout = nn.Dropout(dropout)
         
     def forward(self, x_prime, x, mask):
+        # the size of Q is different from K, V
         attn_output = self.self_attn(x_prime, x, x, mask)
         x = self.norm1(x_prime + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm2(x + self.dropout(ff_output))
         return x
-    
+
+# the decoder layer implementation, same as vanilla transformer
 class DecoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
         super(DecoderLayer, self).__init__()
@@ -149,7 +156,7 @@ class Funnel_Transformer(nn.Module):
         tgt_mask = tgt_mask & nopeak_mask
         return src_mask, tgt_mask
 
-    def pass_through_decoder(self, output_emb, enc_output,tgt_mask):
+    def pass_through_decoder(self, output_emb, enc_output, tgt_mask):
         dec_output = output_emb
         for dec_layer in self.decoder_layers:
             dec_output = dec_layer(dec_output, enc_output, None, tgt_mask)
@@ -193,40 +200,3 @@ class Funnel_Transformer(nn.Module):
         output = self.fc(dec_output)
         return [output, enc_output]
 
-
-class Transformer(nn.Module):
-    def __init__(self, src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout):
-        super(Transformer, self).__init__()
-        self.encoder_embedding = nn.Embedding(src_vocab_size, d_model)
-        self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
-        self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
-        
-        self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
-        self.decoder_layers = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
-
-        self.fc = nn.Linear(d_model, tgt_vocab_size)
-        self.dropout = nn.Dropout(dropout)
-
-    def generate_mask(self, src, tgt):
-        src_mask = (src != 0).unsqueeze(1).unsqueeze(2)
-        tgt_mask = (tgt != 0).unsqueeze(1).unsqueeze(3)
-        seq_length = tgt.size(1)
-        nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1).type_as(src)).bool()
-        tgt_mask = tgt_mask & nopeak_mask
-        return src_mask, tgt_mask
-
-    def forward(self, src, tgt):
-        src_mask, tgt_mask = self.generate_mask(src, tgt)
-        src_embedded = self.dropout(self.positional_encoding(self.encoder_embedding(src)))
-        tgt_embedded = self.dropout(self.positional_encoding(self.decoder_embedding(tgt)))
-
-        enc_output = src_embedded
-        for enc_layer in self.encoder_layers:
-            enc_output = enc_layer(enc_output, src_mask)
-
-        dec_output = tgt_embedded
-        for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
-
-        output = self.fc(dec_output)
-        return output

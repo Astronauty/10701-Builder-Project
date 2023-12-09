@@ -1,41 +1,28 @@
-import math
-
 from torch.utils.data import DataLoader
 
-from data_loader import EnFrDataset
+from DatasetSize import DatasetSize
+from data_loader_full import Test_dataset
 
 
 class DataLoaderProvider:
 
     def __init__(self,
-                 use_abridged_dataset,
+                 dataset_size: DatasetSize,
                  batch_size,
-                 max_sequence_length=100):
-        # load dataset
-        dataset = EnFrDataset(used_abridged_data=use_abridged_dataset,
-                              max_seq_length=max_sequence_length)
-
-        split_proportion_dict = {
-            'train': 0.8,
-            'validation': 0.1,
-            'test': 0.1
-        }
-
+                 max_sequence_length=40):
         self.dataloaders = {}
 
-        # cumulative_proportion = 0
-        split_start_index = 0
-        for split_name, proportion in split_proportion_dict.items():
-            split_end_index = split_start_index + math.floor(len(dataset) * proportion)
+        for split in ['train', 'validation', 'test']:
+            dataset = Test_dataset(csv_file_x=f"data/{dataset_size.value}/tokens/en_tokens_{split}.csv",
+                                   csv_file_y=f"data/{dataset_size.value}/tokens/fr_tokens_{split}.csv",
+                                   en_lang_path=f"data/{dataset_size.value}/vocabs/en_vocab.pkl",
+                                   fr_lang_path=f"data/{dataset_size.value}/vocabs/fr_vocab.pkl",
+                                   sequence_length=max_sequence_length)
 
-            dataset_slice = dataset[split_start_index:split_end_index]
-
-            self.dataloaders[split_name] = DataLoader(dataset=dataset_slice,
-                                                      batch_size=batch_size,
-                                                      shuffle=False if split_name == 'test' else True,
-                                                      num_workers=1)
-            # cumulative_proportion += proportion
-            split_start_index = split_end_index
+            self.dataloaders[split] = DataLoader(dataset=dataset,
+                                                 batch_size=batch_size,
+                                                 shuffle=False,
+                                                 num_workers=1)
 
     def get_train_dataloader(self):
         return self.dataloaders['train']
