@@ -78,10 +78,11 @@ class Test_dataset(Dataset):
             list_of_words = []
             for token in batch:
                 if token.item() == CustomTokens.EOS.value or token.item() == CustomTokens.PAD.value:
-                    list_of_words.append("EOS")
+                    list_of_words.append(str(CustomTokens.EOS.value))
                     break
-                list_of_words.append(lang.index2word[token.item()])
-            if test:
+                # list_of_words.append(lang.index2word[token.item()])
+                list_of_words.append(str(token.item()))
+            if not test:
                 list_of_sentences.append([list_of_words])
             else:
                 list_of_sentences.append(list_of_words)

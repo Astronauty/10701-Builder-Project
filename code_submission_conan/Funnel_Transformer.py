@@ -156,10 +156,10 @@ class Funnel_Transformer(nn.Module):
         tgt_mask = tgt_mask & nopeak_mask
         return src_mask, tgt_mask
 
-    def pass_through_decoder(self, output_emb, enc_output,tgt_mask):
-        dec_output = None
+    def pass_through_decoder(self, output_emb, enc_output, tgt_mask):
+        dec_output = output_emb
         for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(output_emb, enc_output, None, tgt_mask)
+            dec_output = dec_layer(dec_output, enc_output, None, tgt_mask)
         return dec_output
 
     def forward(self, src, tgt):
