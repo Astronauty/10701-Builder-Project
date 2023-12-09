@@ -1,6 +1,10 @@
+import glob
 import math
+import os
+
 import torch
 from torch.nn import Module
+from tqdm import tqdm
 
 from DataLoaderProvider import DataLoaderProvider
 import matplotlib.pyplot as plt
@@ -19,7 +23,8 @@ class TrainEval:
                  optimizer,
                  loss_function,
                  model: Module,
-                 model_shortname):
+                 model_shortname,
+                 disambiguator):
         self.num_epochs = num_epochs
         self.optimizer = optimizer
         self.loss_function = loss_function
@@ -38,6 +43,9 @@ class TrainEval:
         self.epoch_train_losses = []
         self.epoch_validation_losses = []
 
+        self.disambiguator = disambiguator
+        self.checkpoint_filename_prefix = ''
+
     def _checkpoint(self, epoch, loss):
         checkpoint_dict = {
             'epoch': epoch,
@@ -46,9 +54,18 @@ class TrainEval:
             'loss': loss
         }
 
-        checkpoint_path = f"checkpoint/m-{self.model_shortname}_e-{epoch}_l-{loss}.pt"
+        checkpoint_filename_prefix_new = f"m-{self.model_shortname}_e-{epoch}_l-{loss}_d-{self.disambiguator}"
 
-        torch.save(checkpoint_dict, checkpoint_path)
+        checkpoint_path_like = f"checkpoint/{checkpoint_filename_prefix_new}.pt"
+
+        torch.save(checkpoint_dict, checkpoint_path_like)
+
+        if self.checkpoint_filename_prefix != '':
+            for filename in glob.glob(f"checkpoint/{self.checkpoint_filename_prefix}*"):
+                os.remove(filename)
+
+        self.checkpoint_filename_prefix = checkpoint_filename_prefix_new
+
 
     def execute(self):
         self._run_all_epochs()
@@ -68,10 +85,13 @@ class TrainEval:
             print(
                 f"e: {e}, train loss: {round(epoch_train_loss, 3)}, validation loss: {round(epoch_validation_loss, 3)}")
 
+            self._display_loss_plot()
             # save checkpoint if model improved on validation set
             if epoch_validation_loss < min_validation_loss:
                 self._checkpoint(e, epoch_validation_loss)
                 min_validation_loss = epoch_validation_loss
+                self._save_loss_plot()
+
 
     def _epoch_step(self, train_mode):
         if train_mode:
@@ -82,16 +102,19 @@ class TrainEval:
             dataloader = self.validation_dataloader
 
         epoch_cumulative_loss = 0
-        for en_token_ids, fr_token_ids in dataloader:
+        for en_token_ids, fr_token_ids in tqdm(dataloader):
             # move input tensors to same device as model
             en_token_ids = en_token_ids.to(self.device)
             fr_token_ids = fr_token_ids.to(self.device)
 
+            en_token_ids = torch.squeeze(en_token_ids)
+            fr_token_ids = torch.squeeze(fr_token_ids)
+
             self.optimizer.zero_grad()
 
-            output = self.model(src=en_token_ids, tgt=fr_token_ids[:-1, :])
+            output = self.model(src=en_token_ids, tgt=fr_token_ids[:, :-1])
 
-            loss = self.loss_function(output.reshape(-1, output.shape[-1]), fr_token_ids[1:, :].reshape(-1))
+            loss = self.loss_function(output.reshape(-1, output.shape[-1]), fr_token_ids[:, 1:].reshape(-1))
 
             if train_mode:
                 loss.backward()
@@ -106,8 +129,8 @@ class TrainEval:
     def _stage_loss_plot(self, train_values, validation_values):
         plt.plot(train_values, label=f"train")
         plt.plot(validation_values, label=f"validation")
-        plt.xlabel('loss')
-        plt.ylabel('epoch')
+        plt.xlabel('epoch')
+        plt.ylabel('loss')
         plt.legend(loc="upper right")
 
     def _display_loss_plot(self):
@@ -117,7 +140,7 @@ class TrainEval:
 
     def _save_loss_plot(self):
         self._stage_loss_plot(self.epoch_train_losses, self.epoch_validation_losses)
-        plt.savefig('loss.png')
+        plt.savefig(f'loss-{self.disambiguator}.png')
         unstage_plot()
 
     def _display_bleu_plot(self):

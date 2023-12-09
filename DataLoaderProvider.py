@@ -1,22 +1,23 @@
-import math
-
 from torch.utils.data import DataLoader
 
-from CustomDataset import CustomDataset
+from DatasetSize import DatasetSize
+from data_loader_full import Test_dataset
 
 
 class DataLoaderProvider:
 
     def __init__(self,
-                 abridge,
-                 batch_size):
+                 dataset_size: DatasetSize,
+                 batch_size,
+                 max_sequence_length=40):
         self.dataloaders = {}
 
         for split in ['train', 'validation', 'test']:
-            if abridge:
-                dataset = CustomDataset(tokenized_split_df_path=f"data/tokenized_splits/abridged_{split}.pkl")
-            else:
-                dataset = CustomDataset(tokenized_split_df_path=f"data/tokenized_splits/{split}.pkl")
+            dataset = Test_dataset(csv_file_x=f"data/{dataset_size.value}/tokens/en_tokens_{split}.csv",
+                                   csv_file_y=f"data/{dataset_size.value}/tokens/fr_tokens_{split}.csv",
+                                   en_lang_path=f"data/{dataset_size.value}/vocabs/en_vocab.pkl",
+                                   fr_lang_path=f"data/{dataset_size.value}/vocabs/fr_vocab.pkl",
+                                   sequence_length=max_sequence_length)
 
             self.dataloaders[split] = DataLoader(dataset=dataset,
                                                  batch_size=batch_size,
