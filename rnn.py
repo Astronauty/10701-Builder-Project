@@ -170,7 +170,9 @@ class RNN:
         total_loss = 0
         for data in tqdm(data_loader):
             input, target = data
+
             input = torch.squeeze(input).to(device)
+
             target = torch.squeeze(target).to(device)
 
             encoder_outputs, encoder_hidden = self.encoder(input)
@@ -181,6 +183,7 @@ class RNN:
             )
 
             total_loss += loss.item()
+            print(loss.item())
 
         return total_loss/len(data_loader)
 
@@ -307,17 +310,16 @@ def my_bleu_score(outputs, targets):
                             """
     all_output_strings_lists = []
     all_targets_strings_lists = []
+    targets_list = targets.tolist()
     for i in range(len(outputs)):
-        somewhat_hot_output = [outputs[i]]
-        target = targets[i]
-
-        output_tokens = torch.topk(somewhat_hot_output, 1)[1].squeeze()
-        target_tokens = torch.topk(one_hot_target, 1)[1].squeeze()
-        output_token_list = output_tokens.tolist()
-        output_token_str_list = [str(x) for x in output_token_list]
-        target_token_list = target_tokens.tolist()
-        target_token_str_list = [str(x) for x in target_token_list]
-    return bleu_score([output_token_str_list], [[target_token_str_list]])
+        somewhat_hot_output = outputs[i].unsqueeze(0)
+        target_token = str(targets_list[i])
+        output_token = str(torch.topk(somewhat_hot_output, 1)[1].squeeze().item())
+        if not output_token in ["0", "1", "2"]:
+            all_output_strings_lists.append(output_token)
+        if not target_token in ["0", "1", "2"]:
+            all_targets_strings_lists.append(target_token)
+    return torch.tensor(bleu_score([all_output_strings_lists], [[all_targets_strings_lists]]))
 
 
 
@@ -433,7 +435,7 @@ def load_rnn(file_name):
     with open(f"data/saved_rnns/{file_name}.pickle", 'rb') as handle:
         return pickle.load(handle)
 
-def test_rnn(rnn, en_data_file_name="tokenized_val_en_abridge", fr_data_file_name="tokenized_val_fr_abridge", criterion=bleu_score, batch_size=256, max_seq_length=60):
+def test_rnn(rnn, en_data_file_name="tokenized_test_en", fr_data_file_name="tokenized_test_fr", criterion=bleu_score, batch_size=256, max_seq_length=60):
     """Computes the error of the rnn on the dataset
 
                             Args:
@@ -453,6 +455,7 @@ def test_rnn(rnn, en_data_file_name="tokenized_val_en_abridge", fr_data_file_nam
     rnn.decoder.embedding.to(device)
     rnn.decoder.lstm.to(device)
     rnn.encoder.dropout = nn.Dropout(0)
+    rnn.decoder.out.to(device)
 
     dataset = Test_dataset(f"data/{en_data_file_name}.csv", f"data/{fr_data_file_name}.csv",
                         "data/en_lang_abridged_90.pickle",
@@ -462,13 +465,15 @@ def test_rnn(rnn, en_data_file_name="tokenized_val_en_abridge", fr_data_file_nam
     error = rnn.test(test_dataloader, criterion=criterion)
     return error
 
-for learning_rate in [0.01, 0.001]:
+# Code used to train the rnns during hyperparameter optimisation
+"""for learning_rate in [0.01, 0.001]:
     for hidden_dim in [200, 100, 50]:
         print("learning_rate:", learning_rate, "hidden_dim:", hidden_dim)
         rnn = create_rnn(n_epochs=30, batch_size = 256, hidden_dim=100, plot_name=f"hidden_dim_{hidden_dim}_lr_{learning_rate}_plot")
-        save_rnn(rnn, f"hidden_dim_{hidden_dim}_lr_{learning_rate}")
+        save_rnn(rnn, f"hidden_dim_{hidden_dim}_lr_{learning_rate}")"""
 
-"""plot_name = "hidden_dim_200_lr_0.001_plot"
+# code used to extract saved training data to fill the tables
+"""plot_name = "hidden_dim_50_lr_0.001_plot"
 with open(f'data/{plot_name}_data.pickle', 'rb') as handle:
     data = pickle.load(handle)
     print("last training error:", data["plot_losses"][len(data["plot_losses"]) - 1])
@@ -478,18 +483,12 @@ with open(f'data/{plot_name}_data.pickle', 'rb') as handle:
     print("train time:", data["time"]/3600)"""
 
 
-
-"""rnn = load_rnn("1_epoch_on_abridged")
-print("hello :)")
-print(test_rnn(rnn, criterion=CrossEntropyLoss()))
-print(809.9715385437012)"""
-
-
-
-"""candidate_corpus = [['My', 'full', 'pytorch', 'test']]
-references_corpus = [[['My', 'full', 'pytorch', 'test', "sucks"]]]
-print(bleu_score(candidate_corpus, references_corpus))
-print(bleu_score([["1", "2", "4", "5"]], [[["1", "2", "4", "5", "6"]]]))"""
+# code used to calculate the bleu score on test data for a saved rnn
+"""rnn = load_rnn("hidden_dim_100_lr_0.01")
+bleu_score_output = test_rnn(rnn, criterion=my_bleu_score, batch_size=512)
+print(bleu_score_output)
+with open(f'data/bleu_score_output_data.pickle', 'wb') as handle:
+    pickle.dump(bleu_score_output, handle)"""
 
 
 

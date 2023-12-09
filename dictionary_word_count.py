@@ -3,7 +3,9 @@ import numpy
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-"""path = Path(f'data/Conan Data/en_lang_90.pickle')
+"""Rough code, used to create the dictionary word counting graphs."""
+
+path = Path(f'data/Conan Data/en_lang_90.pickle')
 with open(path, 'rb') as handle:
     enLang = pickle.load(handle)
 
@@ -26,9 +28,9 @@ for word in enLang.word2count.keys():
 
 
 print(ghundred)
-print(number_in_range_list)"""
+print(number_in_range_list)
 
-number_in_range_list = [0, 1400192,   374580,   156875,    93645,   60308,   43306,   33139, 26211,   21258,  278854]
+"""number_in_range_list = [0, 1400192,   374580,   156875,    93645,   60308,   43306,   33139, 26211,   21258,  278854]
 
 plt.style.use('_mpl-gallery')
 
@@ -43,7 +45,7 @@ plt.xlabel("Number x of times a word occurs")
 plt.ylabel("Number of words that occur x times")
 # this locator puts ticks at regular intervals
 #loc = ticker.MultipleLocator(base=10)
-plt.savefig('distributionTrials.png',bbox_inches='tight')
+plt.savefig('distributionTrials.png',bbox_inches='tight')"""
 
 
 
