@@ -22,10 +22,11 @@ class split_csv():
         """_summary_
 
         Args:
-            abridged (bool): Use the generated abridged dataset 
-
+            Generate_train_test_split (bool): Check if generate train test split
+            create_abridged: check if create abridged
+            abridged_size: define abridge size
         Returns:
-            _type_: _description_
+            
         """
         self.Generate_train_test_split = Generate_train_test_split
         self.create_abridged = create_abridged
@@ -89,6 +90,15 @@ class split_csv():
 
 
 def get_the_sequence_distribution(ds,en_tokenizer,fr_tokenizer):
+    """_summary_
+
+    Args:
+        ds: the pd dataset object
+        en_tokenizer: English Tokenizer
+        fr_tokenizer: French Tokenizer
+    Returns:
+        en_seq_len_list, en_seq_len_list: the list of sequences
+    """
     en_seq_len_list = []
     fr_seq_len_list = []
     for i in tqdm(range(len(ds))):
@@ -148,6 +158,14 @@ def get_the_sequence_distribution(ds,en_tokenizer,fr_tokenizer):
 
 
 def lang_organizer(lang):
+    """To organize the lang class objects.
+
+    Args:
+        lang: target lang object
+
+    Returns:
+        lang: organized target lang object
+    """
     vocabs = list(lang.word2index.keys())
     for keys in vocabs:
         # check if the number of occurence in that key is small
@@ -172,7 +190,7 @@ def lang_organizer(lang):
             index2word1[i] = words
             i += 1
     lang.word2index = word2index1
-    lang.index2word1 = index2word1
+    lang.index2word = index2word1
     return lang
 
 def read_lang(ds, eng_str="en", fr_str="fr"):
@@ -189,41 +207,41 @@ def read_lang(ds, eng_str="en", fr_str="fr"):
     return eng_lang, fr_lang, pairs
 
 def string_to_token_list(sequence, lang):
-        """Tokenize a sequence string in the given english/french language and return the list of tokens.
+    """Tokenize a sequence string in the given english/french language and return the list of tokens.
 
-        Args:
-            sequence (string): _description_
-            lang (_type_): _description_
-            en_tokenizer (_type_): _description_
-            fr_tokenizer (_type_): _description_
+    Args:
+        sequence (string): _description_
+        lang (_type_): _description_
+        en_tokenizer (_type_): _description_
+        fr_tokenizer (_type_): _description_
 
-        Returns:
-            _type_: _description_
-        """
-        max_seq_length = 1000
-        token_list = []
-        if lang.lang == "en":
-            words = en_tokenizer(sequence.lower())
+    Returns:
+        _type_: _description_
+    """
+    max_seq_length = 1000
+    token_list = []
+    if lang.lang == "en":
+        words = en_tokenizer(sequence.lower())
+    else:
+        words = fr_tokenizer(sequence.lower())
+        
+    # truncate the word list if it exceeds the max allowed sequence length
+    words = words[:max_seq_length - 2] # -2 is to account for the appended SOS and EOS token
+    
+    token_list.append(CustomTokens.SOS.value)
+    for word in words:
+        if word in lang.word2index:
+            token_list.append(lang.word2index[word])
         else:
-            words = fr_tokenizer(sequence.lower())
-            
-        # truncate the word list if it exceeds the max allowed sequence length
-        words = words[:max_seq_length - 2] # -2 is to account for the appended SOS and EOS token
-        
-        token_list.append(CustomTokens.SOS.value)
-        for word in words:
-            if word in lang.word2index:
-                token_list.append(lang.word2index[word])
-            else:
-                token_list.append(CustomTokens.UNK.value)
-        
-        token_list.append(CustomTokens.EOS.value)
-        
-        # # pad the remainder of the token list 
-        # while len(token_list) < max_seq_length:
-        #     token_list.append(CustomTokens.PAD.value)
-        
-        return token_list
+            token_list.append(CustomTokens.UNK.value)
+    
+    token_list.append(CustomTokens.EOS.value)
+    
+    # # pad the remainder of the token list 
+    # while len(token_list) < max_seq_length:
+    #     token_list.append(CustomTokens.PAD.value)
+    
+    return token_list
 
 def string_data_to_tokens(data, en_lang, fr_lang, filename):
     """Create tokenized pairs of english and french sentences
@@ -301,4 +319,123 @@ def data_preprocessing(ds, training_data: bool, eng_str="en", fr_str="fr", ):
 
 
 ## Model Inference to get BLEU
+def add_list_of_tokens(batch_token_ids, reference: bool):
+    """take in the batched tokens and turn it into list to feed into the BLEU function
 
+    Args:
+        batch_token_ids: the batched data
+        reference: check if it is reference or not
+
+    Returns:
+        toks: the finished list of strings
+    """
+    toks = []
+
+    custom_token_ids_to_remove = set([CustomTokens.SOS.value, CustomTokens.EOS.value, CustomTokens.PAD.value])
+    for token_ids in batch_token_ids.tolist():
+        temp = [str(token_id) for token_id in token_ids if token_id not in custom_token_ids_to_remove]
+
+        if reference:
+            toks.append([temp])
+        else:
+            toks.append(temp)
+
+    return toks
+
+def inference(model, src_data, tgt_data, out_seq_len):
+    """Do inference to get the prediction BLEU score
+
+    Args:
+        model: the target model
+        src_data: the source data
+        tgt_data: the target data
+        out_seq_len: the output sequence length
+
+    Returns:
+        output_pred:output of the prediction
+        output_real:output of the real target data
+    """
+    model.eval()
+    batch_size = src_data.shape[0]
+    # initialize start of sentence
+    y_init = torch.LongTensor([CustomTokens.SOS.value]).unsqueeze(0).cuda(1).view(1, 1)
+    y_init = y_init.repeat(batch_size,1)
+
+    # generate output positional encoding
+    toy_embeddings = model.decoder_embedding(tgt_data)
+    output_encoding = model.positional_encoding(toy_embeddings)
+
+    # generate the encoder output from the encoder
+    _, encoder_output = model(src_data, tgt_data)
+
+    
+    # inferencing
+    for i in range(out_seq_len-1):
+        # generate the mask for decoder
+        _,tgt_mask = model.generate_mask(src_data, y_init)
+        # get the embedding of the decoder input
+        inf_emb = model.decoder_embedding(y_init)
+        # added up with the positional encoding
+        output_encoding_for_inference = inf_emb + output_encoding[:,:y_init.shape[1],:]
+        # get the decoder output and the probabilities of all the values
+        decoder_output = model.pass_through_decoder(output_encoding_for_inference, encoder_output, tgt_mask)
+        decoder_output = model.fc(decoder_output)
+        # get the index of the final word with highest probabilities
+        _, next_word = torch.max(
+                decoder_output[:, y_init.shape[1] - 1 : y_init.shape[1],:], dim=2
+            )
+        # generate the final output
+        y_init = torch.cat([y_init, next_word.view(batch_size,1)], dim=1)
+
+    print(y_init.shape)
+    # convert output from list to tokens
+    output_pred = add_list_of_tokens((y_init), reference=False)
+    # convert output ground truth from list to tokens
+    output_real = add_list_of_tokens((tgt_data), reference=True)
+
+        
+    return output_pred, output_real
+
+# from data_loader_full import Test_dataset
+# from torchtext.data.metrics import bleu_score
+
+# test_ds = Test_dataset("data/tokenized_test_en.csv","data/tokenized_test_fr.csv","data/en_lang_abridged_90.pickle", "data/fr_lang_abridged_90.pickle", sequence_length=60)
+
+# device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+# src_vocab_size = test_ds.en_lang.n_words
+# tgt_vocab_size = test_ds.fr_lang.n_words
+# print("EN size:",src_vocab_size)
+# print("FR size:",tgt_vocab_size)
+# d_model = 512
+# num_heads = 8
+# d_ff = 512
+# max_seq_length = 60
+# encoder_blocks = 3
+# assert((max_seq_length%(2**(encoder_blocks-1))==0)),"This shape is not compatible"
+# assert((max_seq_length/(2**(encoder_blocks-1))!=0)),"This shape is not compatible"
+# decoder_blocks = 8
+# dropout = 0.1
+
+# # initialize model
+# f_transformer = Funnel_Transformer(src_vocab_size, tgt_vocab_size, d_model, num_heads, decoder_blocks, encoder_blocks, d_ff, max_seq_length, dropout)
+# f_transformer.load_state_dict(torch.load("model_ckpt/20231208-020407.pth")["model"])
+# f_transformer = f_transformer.to(device)
+# # initialize dataloader
+# dataloader = DataLoader(test_ds, batch_size=256, shuffle=True, num_workers=6)
+
+# all_pred = None
+# all_real = None
+# for i, it in enumerate(tqdm(dataloader)):
+#     inputs, outputs = it
+#     inputs = torch.squeeze(inputs)
+#     outputs = torch.squeeze(outputs)
+#     inputs = inputs.to(device)
+#     outputs = outputs.to(device)
+#     output_pred, output_real = inference(f_transformer,inputs, outputs,60)
+#     if i == 0:
+#         all_pred = output_pred
+#         all_real = output_real
+#     else:
+#         all_pred.extend(output_pred)
+#         all_real.extend(output_real)
+#     print(bleu_score(all_pred,all_real))
